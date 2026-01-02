@@ -165,10 +165,76 @@ class World(Entity):
                     
                     chunk.set_block(local_x, local_y, local_z, block_type)
         
+        # Generate trees on this chunk
+        self._generate_trees(chunk, chunk_pos)
+        
         # Generate the optimized mesh
         chunk.generate_mesh()
         
         return chunk
+    
+    def _generate_trees(self, chunk: Chunk, chunk_pos: Tuple[int, int, int]) -> None:
+        """Generate trees on grass blocks in this chunk."""
+        import random
+        
+        cx, cy, cz = chunk_pos
+        
+        # Use chunk position as seed for consistent tree placement
+        random.seed(cx * 1000 + cz * 37 + cy)
+        
+        # Try to place a few trees per chunk
+        num_tree_attempts = 3
+        
+        for _ in range(num_tree_attempts):
+            # Random position in chunk
+            local_x = random.randint(2, CHUNK_SIZE - 3)  # Keep away from edges
+            local_z = random.randint(2, CHUNK_SIZE - 3)
+            
+            world_x = cx * CHUNK_SIZE + local_x
+            world_z = cz * CHUNK_SIZE + local_z
+            
+            # Find the surface at this position
+            surface_height = get_terrain_height(world_x, world_z)
+            local_y = surface_height - cy * CHUNK_SIZE
+            
+            # Check if surface is in this chunk and is grass
+            if 0 <= local_y < CHUNK_SIZE - 6:  # Need room for tree
+                if chunk.get_block(local_x, local_y, local_z) == BlockType.GRASS:
+                    # Random chance to place a tree
+                    if random.random() < 0.4:
+                        self._place_tree(chunk, local_x, local_y + 1, local_z)
+    
+    def _place_tree(self, chunk: Chunk, base_x: int, base_y: int, base_z: int) -> None:
+        """Place a tree at the given position in the chunk."""
+        import random
+        
+        # Tree height (trunk)
+        trunk_height = random.randint(4, 6)
+        
+        # Place trunk (wood blocks)
+        for y in range(trunk_height):
+            if 0 <= base_y + y < CHUNK_SIZE:
+                chunk.set_block(base_x, base_y + y, base_z, BlockType.WOOD)
+        
+        # Place leaves (sphere around top of trunk)
+        leaf_center_y = base_y + trunk_height - 1
+        leaf_radius = 2
+        
+        for dx in range(-leaf_radius, leaf_radius + 1):
+            for dy in range(-1, leaf_radius + 1):
+                for dz in range(-leaf_radius, leaf_radius + 1):
+                    # Spherical check
+                    dist = abs(dx) + abs(dy) + abs(dz)
+                    if dist <= leaf_radius + 1:
+                        lx = base_x + dx
+                        ly = leaf_center_y + dy
+                        lz = base_z + dz
+                        
+                        # Check bounds
+                        if 0 <= lx < CHUNK_SIZE and 0 <= ly < CHUNK_SIZE and 0 <= lz < CHUNK_SIZE:
+                            # Don't overwrite trunk
+                            if chunk.get_block(lx, ly, lz) == BlockType.AIR:
+                                chunk.set_block(lx, ly, lz, BlockType.LEAVES)
     
     def load_chunks_around(self, center_x: float, center_y: float, center_z: float) -> None:
         """
